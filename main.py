@@ -1,56 +1,61 @@
-#!/usr/bin/env python3
-"""Place the Saturday 21 November 2026 front page at the output path.
+"""Copy the bundled front-page image to the harness output directory.
 
-The finished infographic lives in this repository as entry.png: a dense
-one-page newspaper summary of Saturday 21 November 2026, led by Bitcoin's
-crash to a two-year low and followed by 39 further stories, with a stat
-strip, a region bar, a world map with numbered pins and a date check. This
-program only moves that image into the directory the grader names.
+The entry image lives in this repository as ``entry.png``. This program
+does nothing but hand that exact file to the harness: it reads the bytes,
+checks they really are a PNG, and writes them unchanged to
+``$MAKEFUN_OUTPUT_DIR/entry.png``.
 
-It needs nothing but the Python standard library, opens no network
-connection, reads no clock and makes no random choices, so two runs write
-identical bytes. It first confirms the file beside it really is a PNG by
-its magic header, and writes nothing if the image is missing or damaged.
+No network, no clock, no randomness -- the output bytes are always
+identical to the bundled image.
 """
 
 import os
-import sys
+from pathlib import Path
 
-IMAGE_NAME = "entry.png"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+MAX_BYTES = 1_048_576  # competition cap: the entry image must fit in 1 MiB
+DEST_NAME = "entry.png"
 
 
-def fail(message):
-    """Write the problem to stderr and exit without producing output."""
-    sys.stderr.write("news-image-20261121: " + message + "\n")
-    raise SystemExit(1)
+def bundled_image() -> Path:
+    """Path of the image shipped in this repository."""
+    return Path(__file__).resolve().parent / "entry.png"
 
 
-def read_entry_image():
-    """Return the bytes of entry.png after checking its PNG header."""
-    here = os.path.dirname(os.path.abspath(__file__))
-    image_path = os.path.join(here, IMAGE_NAME)
-    if not os.path.isfile(image_path):
-        fail(IMAGE_NAME + " is not present next to main.py")
-    with open(image_path, "rb") as source:
-        data = source.read()
+def output_dir() -> Path:
+    """Output directory named by the harness environment."""
+    raw = os.environ.get("MAKEFUN_OUTPUT_DIR")
+    if not raw:
+        raise SystemExit("MAKEFUN_OUTPUT_DIR is not set; nothing to write to")
+    return Path(raw)
+
+
+def checked_bytes(path: Path) -> bytes:
+    """Read *path* and confirm it holds a real, non-empty PNG."""
+    if not path.is_file():
+        raise SystemExit(f"bundled image missing: {path}")
+    data = path.read_bytes()
+    if not data:
+        raise SystemExit(f"bundled image is empty: {path}")
+    if len(data) > MAX_BYTES:
+        raise SystemExit(f"bundled image exceeds 1 MiB ({len(data)} bytes): {path}")
     if data[: len(PNG_MAGIC)] != PNG_MAGIC:
-        fail(IMAGE_NAME + " does not start with the PNG magic header")
-    if len(data) == 0:
-        fail(IMAGE_NAME + " is empty")
+        raise SystemExit(f"bundled image is not a PNG: {path}")
     return data
 
 
-def main():
-    """Copy the checked image to $MAKEFUN_OUTPUT_DIR/entry.png."""
-    output_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "")
-    if not output_dir:
-        fail("MAKEFUN_OUTPUT_DIR is not set")
-    image = read_entry_image()
-    os.makedirs(output_dir, exist_ok=True)
-    destination = os.path.join(output_dir, IMAGE_NAME)
-    with open(destination, "wb") as target:
-        target.write(image)
+def place(data: bytes, directory: Path) -> Path:
+    """Write *data* to ``entry.png`` inside *directory*."""
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / DEST_NAME
+    target.write_bytes(data)
+    return target
+
+
+def main() -> None:
+    data = checked_bytes(bundled_image())
+    target = place(data, output_dir())
+    print(f"wrote {len(data)} bytes to {target}")
 
 
 if __name__ == "__main__":
